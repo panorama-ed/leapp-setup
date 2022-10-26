@@ -10,4 +10,4 @@ brew uninstall python --ignore-dependencies python
 # Uninstall homebrew
 sudo /bin/bash -cf "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh)"
 # Uninstall xcode
-#sudo rm -rf /Library/Developer/CommandLineTools
+sudo rm -rf /Library/Developer/CommandLineTools
