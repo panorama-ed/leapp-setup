@@ -8,13 +8,18 @@ if [[ -z "${LEAPP_ROLES}" ]]; then
     exit
 fi
 
-# Install the xcode Command Line Tools, if they are not installed
-xcode-select --install
-
 # Install Homebrew if not installed
+# This may optionally install the Xcode CLT if it is not already installed.
 which -s brew
 if [[ $? != 0 ]] ; then
-    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" </dev/null
+    /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    # If using an M1 machine, load shell environment to run brew commands
+    if [[ $(uname -m) == 'arm64' ]]; then
+        echo ‘# Set PATH, MANPATH, etc., for Homebrew.’ >> ~/.zprofile
+        echo ‘eval "$(/opt/homebrew/bin/brew shellenv)"’ >> ~/.zprofile
+        eval "$(/opt/homebrew/bin/brew shellenv)"
+    fi
 fi
 
 # The AWS CLI requires python
@@ -23,20 +28,20 @@ brew install python
 brew install awscli
 
 # If using an M1 machine, add a symlink for the AWS credential files to where Leapp expects them
-if [[ ! -f /usr/local/bin/aws ]]; then
-    ln -s /opt/homebrew/bin/aws /usr/local/bin/aws
+if [[ $(uname -m) == 'arm64' ]]; then
+    sudo ln -s /opt/homebrew/bin/aws /usr/local/bin/aws
 fi
 
-# For the app store version of filezilla, it expects the .aws credentials
+# If the app store version of filezilla is installed, it expects the .aws credentials
 # to be in the filezilla installation directory.  Add a symlink there.
-ln -s ~/.aws ~/Library/Containers/org.filezilla-project.filezilla.sandbox/Data/.aws
+if [ -d ~/Library/Containers/org.filezilla-project.filezilla.sandbox ]; then
+    ln -s ~/.aws ~/Library/Containers/org.filezilla-project.filezilla.sandbox/Data/.aws
+fi
 
 # Install session manager plugin
-curl "https://s3.amazonaws.com/session-manager-downloads/plugin/latest/mac/sessionmanager-bundle.zip" -o "sessionmanager-bundle.zip"
-unzip -o sessionmanager-bundle.zip
-python3 sessionmanager-bundle/install -i /usr/local/sessionmanagerplugin -b /usr/local/bin/session-manager-plugin
-rm -rf sessionmanager-bundle
+brew install --cask session-manager-plugin
 
+# Install Leapp CLI
 brew install Noovolari/brew/leapp-cli
 
 # Leapp integration setup
@@ -105,7 +110,7 @@ if [ -d "$LEAPP" ]; then
 
     # If we found at least one available session, then we can presume
     # this installation was successful.
-    if (( $(echo "$AVAILABLE_LEAPP_SESSIONS" | wc -l) > 10 )); then
+    if (( $(echo "$AVAILABLE_LEAPP_SESSIONS" | wc -l) > 0 )); then
         echo "+++++ Installation successful. +++++"
     else
         echo "----- Error during installation.  Please share the above output to the Infra/Ops Zone. -----"

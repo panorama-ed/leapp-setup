@@ -10,13 +10,14 @@ done
 # Uninstall Leapp CLI
 brew uninstall Noovolari/brew/leapp-cli
 # Uninstall Session Manager Plugin
-sudo rm -rf /usr/local/sessionmanagerplugin
-sudo rm /usr/local/bin/session-manager-plugin
+brew uninstall --cask session-manager-plugin
 # Uninstall AWS CLI
 brew uninstall awscli
+# Remove AWS credential files
+rm -rf ~/.aws
 # Uninstall python
 brew uninstall python --ignore-dependencies python
 # Uninstall homebrew
 sudo /bin/bash -cf "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/master/uninstall.sh)"
-# Uninstall xcode
+# Uninstall the Xcode CLT (this may be installed as part of homebrew)
 sudo rm -rf /Library/Developer/CommandLineTools
