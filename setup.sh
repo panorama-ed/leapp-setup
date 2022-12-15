@@ -1,20 +1,23 @@
+#!/bin/bash
 # xcode command line tools installation will hang on OS versions lower than this
 MIN_OS_VERSION="12.4.0"
 CURRENT_OS_VERSION=$(sw_vers -productVersion)
 
+red_echo () { echo -ne "\033[1;31m"; echo -n "$@"; echo -e "\033[0m"; }
+
 # use version sorting to check if the current version is less than $MIN_OS_VERSION
 if [[ $MIN_OS_VERSION != "$(printf "$MIN_OS_VERSION\n$CURRENT_OS_VERSION" | sort -V | sed -n 1p)" ]]; then
-    echo "MacOS minimum required version is ${MIN_OS_VERSION}. The installed version is ${CURRENT_OS_VERSION}. Please update your OS before running this script."
+    red_echo "MacOS minimum required version is ${MIN_OS_VERSION}. The installed version is ${CURRENT_OS_VERSION}. Please update your OS before running this script."
     exit
 fi
 
 if [[ -z "${INTEGRATION_PORTAL_URL}" ]]; then
-    echo "INTEGRATION_PORTAL_URL must be provided"
+    red_echo "INTEGRATION_PORTAL_URL must be provided"
     exit
 fi
 
 if [[ -z "${LEAPP_ROLES}" ]]; then
-    echo "LEAPP_ROLES must be provided"
+    red_echo "LEAPP_ROLES must be provided"
     exit
 fi
 
@@ -123,8 +126,8 @@ if [ -d "$LEAPP" ]; then
     if (( $(echo "$AVAILABLE_LEAPP_SESSIONS" | wc -l) > 0 )); then
         echo "+++++ Installation successful. +++++"
     else
-        echo "----- Error during installation.  Please share the above output to the Infra/Ops Zone. -----"
+        red_echo "----- Error during installation.  Please share the above output to the Infra/Ops Zone. -----"
     fi
 else
-    echo "Leapp has not been installed."
+    red_echo "Leapp has not been installed."
 fi
