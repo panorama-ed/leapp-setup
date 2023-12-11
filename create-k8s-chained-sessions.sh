@@ -3,12 +3,10 @@
 # This script takes no arguments.
 # Execute this script after doing your initial setup to automatically generate
 # the sessions necessary for working with kubectl.
-# Do not run this script more than once without resetting your Leapp
-# instance beforehand.
+
+. ./utils.sh
 
 # global variables
-declare PROFILE_ID
-declare CHAINED_SESSION_IDS="name,id\n"
 declare REGION='us-east-1'
 
 ###### FUNCTIONS ######
@@ -16,53 +14,83 @@ declare REGION='us-east-1'
 # function to create a chained leapp session given a parent session id
 # Args:
 # 1: parent session id name from leapp
-# appends new session id from the new chained session to CHAINED_SESSION_IDS
+# 2: sso role name to use for the parent session
+# 3: role name to use for the chained session
 function createLeappSession {
+    green_echo "creating chained session for $1 with role $3"
     parent_session_name=$1
-    chained_session_name="chained-from-${parent_session_name}"
-    echo "starting session for ${parent_session_name} to get role arn"
-    # this has funky piping because `--filter` is a fuzzy lookup and `panorama-k8s-playground` fuzzy matches `panorama-k8s-playground-2` as the first result
-    parent_session_id=$(leapp session list -x --filter="Session Name=${parent_session_name}" --no-header | sort -k2 | sed -n 1p | awk '{print $1}')
-    # start leapp session
-    leapp session start --sessionId $parent_session_id
-    # call to aws to get the role arn for `TerraformRole`
-    role_arn=$(aws iam get-role --role-name TerraformRole --query Role.Arn | tr -d '"')
-    # stop the leapp session
-    leapp session stop --sessionId $parent_session_id
+    parent_role_name=$2
+    chained_role_name=$3
+    # check if the parent session exists for the role. We do this because
+    # regular developers won't have the AWSAdministratorAccess role, so we
+    # don't want to create a chained session for them.
+    parent_session_id=$(leappSessionId "$parent_session_name" "$parent_role_name")
+    if [[ -z "${parent_session_id}" ]]; then
+        green_echo "    No parent session found for ${parent_session_name} with role ${parent_role_name}"
+        return
+    fi
 
-    # create a named profile per account so they can be used simultaneously
-    echo "creating new profile"
-    createLeappProfile $parent_session_name
+    chained_session_name="${parent_session_name}-${chained_role_name}"
 
-    echo "creating new session"
-    # create new chained leapp session from parent
-    leapp session add --providerType aws --sessionType awsIamRoleChained \
-        --sessionName $chained_session_name --region $REGION \
-        --roleArn $role_arn --parentSessionId $parent_session_id \
-        --profileId $PROFILE_ID
-    # add session id from the new session to CHAINED_SESSION_IDS
-    chained_session_id=$(leapp session list --columns=ID --filter="Session Name=${chained_session_name}" --no-header)
-    CHAINED_SESSION_IDS="${CHAINED_SESSION_IDS}${chained_session_name},${chained_session_id}\n"
+    green_echo "    looking for existing session ${chained_session_name}"
+    chained_session_id=$(leappSessionId "$chained_session_name" "$chained_role_name")
+
+    if [[ -z "${chained_session_id}" ]]; then
+        green_echo "    no existing session found; starting session for ${parent_session_name} to get role arn"
+
+        # use the parent session to get the role arn
+        # so we don't have to hard-code account ids
+        leapp session start --sessionId "$parent_session_id" > /dev/null 2> >(logStdErr)
+        role_arn=$(aws iam get-role --role-name "$chained_role_name" --query Role.Arn | tr -d '"')
+        leapp session stop --sessionId "$parent_session_id" > /dev/null 2> >(logStdErr)
+
+        green_echo "    creating new profile"
+        profile_id=$(createLeappProfile "$parent_session_name")
+
+        green_echo "    creating new session"
+        leapp session add --providerType aws --sessionType awsIamRoleChained \
+            --sessionName "$chained_session_name" --region "$REGION" \
+            --roleArn "$role_arn" --parentSessionId "$parent_session_id" \
+            --profileId "$profile_id" > /dev/null 2> >(logStdErr)
+
+    else
+        yellow_echo "    existing session found"
+    fi
+}
+
+# @return the Leapp session ID of the session whose name is the first argument
+#   to this function, if one exists.
+function leappSessionId {
+    # The ^ and $ in the session filter are regex anchors to ensure we don't
+    # match e.g. both `chained-from-panorama-k8s-playground` and
+    # `chained-from-panorama-k8s-playground-2`.
+    leapp session list -x --filter="Session Name=^${1}$" --output json | jq -r ".[] | select(.role==\"${2}\") | .id"
 }
 
 # function to create a leapp profile to associate with the chained k8s sessions
 # stores the new profile id in PROFILE_ID
 function createLeappProfile {
+    # The ^ and $ in the session filter are regex anchors to ensure we don't
+    # match e.g. both `kubectl-access-role-panorama-k8s-playground` and
+    # `kubectl-access-role-panorama-k8s-playground-2`.
     profile_name="kubectl-access-role-${1}"
-    leapp profile create --profileName $profile_name
-    PROFILE_ID=$(leapp profile list --columns=ID --filter="Profile Name=${profile_name}" --no-header)
+    profile_id=$(leapp profile list -x --output json --filter="Profile Name=^${profile_name}$" | jq -r '.[].id')
+    if [[ -n "${profile_id}" ]]; then
+        echo "${profile_id}"
+        return
+    fi
+    leapp profile create --profileName "$profile_name" > /dev/null 2> >(logStdErr)
+    leapp profile list -x --output json --filter="Profile Name=^${profile_name}$" | jq -r '.[].id'
 }
 #
 ###### END FUNCTIONS ######
 
-echo "Creating Leapp Chained k8s sessions for k8s accounts"
 # session names from Leapp for each k8s account
-PARENT_SESSION_NAMES="panorama-k8s-playground panorama-k8s-playground-2 panorama-k8s-integration panorama-k8s-staging panorama-k8s-production"
+PARENT_SESSION_NAMES="panorama-k8s-playground panorama-k8s-playground-2 panorama-k8s-staging panorama-k8s-production"
 
 for session in $PARENT_SESSION_NAMES
 do
-    createLeappSession $session
+    createLeappSession "$session" "AWSAdministratorAccess" "eks-admin-1.24"
+    createLeappSession "$session" "PanoramaK8sEngineeringDefault" "panorama-dev-writer-1.24"
+    createLeappSession "$session" "PanoramaK8sEngineeringDefault" "panorama-dev-reader-1.24"
 done
-
-echo "all sessions created. store IDs for future use:"
-echo -e $CHAINED_SESSION_IDS
