@@ -3,7 +3,7 @@
 MIN_OS_VERSION="12.4.0"
 CURRENT_OS_VERSION=$(sw_vers -productVersion)
 
-red_echo () { echo -ne "\033[1;31m"; echo -n "$@"; echo -e "\033[0m"; }
+. ./utils.sh
 
 # use version sorting to check if the current version is less than $MIN_OS_VERSION
 if [[ $MIN_OS_VERSION != "$(printf "$MIN_OS_VERSION\n$CURRENT_OS_VERSION" | sort -V | sed -n 1p)" ]]; then
