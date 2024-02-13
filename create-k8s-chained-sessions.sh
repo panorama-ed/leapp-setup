@@ -13,27 +13,31 @@ declare REGION='us-east-1'
 #
 # function to create a chained leapp session given a parent session id
 # Args:
-# 1: parent session id name from leapp
+# 1: name of environment ("playground", "staging", etc.)
 # 2: sso role name to use for the parent session
-# 3: role name to use for the chained session
+# 3: scope of the IAM role ("panorama" or "eks").
+# 4: name of the persona (e.g. admin, dev-writer, etc.) the new session is for
 function createLeappSession {
-    green_echo "creating chained session for $1 with role $3"
-    parent_session_name=$1
+    green_echo "creating chained session for $1 with persona $4"
+    environment_name=$1
+    parent_session_name="panorama-k8s-${environment_name}"
     parent_role_name=$2
-    chained_role_name=$3
+    iam_role_scope=$3
+    persona_name=$4
     # check if the parent session exists for the role. We do this because
-    # regular developers won't have the AWSAdministratorAccess role, so we
-    # don't want to create a chained session for them.
+    # not all users have access to all roles. We want to only create sessions
+    # for roles that people have access to.
     parent_session_id=$(leappSessionId "$parent_session_name" "$parent_role_name")
     if [[ -z "${parent_session_id}" ]]; then
         green_echo "    No parent session found for ${parent_session_name} with role ${parent_role_name}"
         return
     fi
 
-    chained_session_name="${parent_session_name}-${chained_role_name}"
+    chained_session_name="k8s-${environment_name}-${persona_name}"
 
     green_echo "    looking for existing session ${chained_session_name}"
-    chained_session_id=$(leappSessionId "$chained_session_name" "$chained_role_name")
+    iam_role_name="${iam_role_scope}-${persona_name}"
+    chained_session_id=$(leappSessionId "$chained_session_name" "$iam_role_name")
 
     if [[ -z "${chained_session_id}" ]]; then
         green_echo "    no existing session found; starting session for ${parent_session_name} to get role arn"
@@ -41,11 +45,11 @@ function createLeappSession {
         # use the parent session to get the role arn
         # so we don't have to hard-code account ids
         leapp session start --sessionId "$parent_session_id" > /dev/null 2> >(logStdErr)
-        role_arn=$(aws iam get-role --role-name "$chained_role_name" --query Role.Arn | tr -d '"')
+        role_arn=$(aws iam get-role --role-name $iam_role_name --query Role.Arn | tr -d '"')
         leapp session stop --sessionId "$parent_session_id" > /dev/null 2> >(logStdErr)
 
         green_echo "    creating new profile"
-        profile_id=$(createLeappProfile "$parent_session_name")
+        profile_id=$(createLeappProfile "${chained_session_name}")
 
         green_echo "    creating new session"
         leapp session add --providerType aws --sessionType awsIamRoleChained \
@@ -70,10 +74,10 @@ function leappSessionId {
 # function to create a leapp profile to associate with the chained k8s sessions
 # stores the new profile id in PROFILE_ID
 function createLeappProfile {
-    # The ^ and $ in the session filter are regex anchors to ensure we don't
-    # match e.g. both `kubectl-access-role-panorama-k8s-playground` and
-    # `kubectl-access-role-panorama-k8s-playground-2`.
-    profile_name="kubectl-access-role-${1}"
+    # The ^ and $ in the session filter are regex anchors to ensure we are
+    # finding an exact match. Otherwise, we risk accidentially matching multiple
+    # Leapp profiles and using the wrong one.
+    profile_name="${1}-access"
     profile_id=$(leapp profile list -x --output json --filter="Profile Name=^${profile_name}$" | jq -r '.[].id')
     if [[ -n "${profile_id}" ]]; then
         echo "${profile_id}"
@@ -86,11 +90,12 @@ function createLeappProfile {
 ###### END FUNCTIONS ######
 
 # session names from Leapp for each k8s account
-PARENT_SESSION_NAMES="panorama-k8s-playground panorama-k8s-playground-2 panorama-k8s-staging panorama-k8s-production"
+ENV_NAMES="playground playground-2 staging production"
 
-for session in $PARENT_SESSION_NAMES
+for env in $ENV_NAMES
 do
-    createLeappSession "$session" "AWSAdministratorAccess" "eks-admin-1.24"
-    createLeappSession "$session" "PanoramaK8sEngineeringDefault" "panorama-dev-writer-1.24"
-    createLeappSession "$session" "PanoramaK8sEngineeringDefault" "panorama-dev-reader-1.24"
+    createLeappSession "$env" "AWSAdministratorAccess" "eks" "admin"
+    createLeappSession "$env" "PanoramaK8sEngineeringDefault" "panorama" "dev-writer"
+    createLeappSession "$env" "PanoramaK8sEngineeringDefault" "panorama" "dev-reader"
+    createLeappSession "$env" "PanoramaK8sDSAR" "panorama" "data-science-tester"
 done
