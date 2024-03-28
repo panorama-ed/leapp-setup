@@ -91,7 +91,7 @@ function createLeappProfile {
 ###### END FUNCTIONS ######
 
 # session names from Leapp for each k8s or DBs account
-ENV_NAMES="playground playground-2"
+ENV_NAMES="playground playground-2 staging production"
 
 for env in $ENV_NAMES
 do
