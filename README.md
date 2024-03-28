@@ -33,10 +33,10 @@ We only publish this on Panopedia to avoid publicly exposing these internal deta
 This script is only meant for testing and is used to revert the setup script in
 order to run it again.  It does not require any variables as input.
 
-## Create K8s Chained Session Setup
+## Create Chained Session Setup
 
 This script is meant to create the chained IAM Role sessions using the
-`TerraformRole` in each of our K8s cluster accounts.  These sessions
+`TerraformRole` in each of our K8s and DBs cluster accounts.  These sessions
 enable the use of kubectl with the clusters.  Further instructions
 and information can be found in the [Working With Clusters](https://panoramaed.atlassian.net/wiki/spaces/ENG/pages/2891415801/Working+with+Clusters)
 KB in Panopedia.
