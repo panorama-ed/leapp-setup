@@ -14,16 +14,18 @@ declare REGION='us-east-1'
 # function to create a chained leapp session given a parent session id
 # Args:
 # 1: name of environment ("playground", "staging", etc.)
-# 2: sso role name to use for the parent session
-# 3: scope of the IAM role ("panorama" or "eks").
-# 4: name of the persona (e.g. admin, dev-writer, etc.) the new session is for
+# 2: name of service ("k8s" or "DBs", reflecting naming of parent Leapp sessions)
+# 3: sso role name to use for the parent session
+# 4: scope of the IAM role ("panorama" or "eks" or "rds").
+# 5: name of the persona (e.g. admin, dev-writer, etc.) the new session is for
 function createLeappSession {
-    green_echo "creating chained session for $1 with persona $4"
+    green_echo "creating chained session for $1 with persona $5"
     environment_name=$1
-    parent_session_name="panorama-k8s-${environment_name}"
-    parent_role_name=$2
-    iam_role_scope=$3
-    persona_name=$4
+    service_name=$2
+    parent_session_name="panorama-${service_name}-${environment_name}"
+    parent_role_name=$3
+    iam_role_scope=$4
+    persona_name=$5
     # check if the parent session exists for the role. We do this because
     # not all users have access to all roles. We want to only create sessions
     # for roles that people have access to.
@@ -33,7 +35,7 @@ function createLeappSession {
         return
     fi
 
-    chained_session_name="k8s-${environment_name}-${persona_name}"
+    chained_session_name="${service_name}-${environment_name}-${persona_name}"
 
     green_echo "    looking for existing session ${chained_session_name}"
     iam_role_name="${iam_role_scope}-${persona_name}"
@@ -71,7 +73,7 @@ function leappSessionId {
     leapp session list -x --filter="Session Name=^${1}$" --output json | jq -r ".[] | select(.role==\"${2}\") | .id"
 }
 
-# function to create a leapp profile to associate with the chained k8s sessions
+# function to create a leapp profile to associate with the chained k8s or DBs sessions
 # stores the new profile id in PROFILE_ID
 function createLeappProfile {
     # The ^ and $ in the session filter are regex anchors to ensure we are
@@ -89,13 +91,17 @@ function createLeappProfile {
 #
 ###### END FUNCTIONS ######
 
-# session names from Leapp for each k8s account
+# session names from Leapp for each k8s or DBs account
 ENV_NAMES="playground playground-2 staging production"
 
 for env in $ENV_NAMES
 do
-    createLeappSession "$env" "AWSAdministratorAccess" "eks" "admin"
-    createLeappSession "$env" "PanoramaK8sEngineeringDefault" "panorama" "dev-writer"
-    createLeappSession "$env" "PanoramaK8sEngineeringDefault" "panorama" "dev-reader"
-    createLeappSession "$env" "PanoramaK8sDSAR" "panorama" "data-science-tester"
+    createLeappSession "$env" "k8s" "AWSAdministratorAccess" "eks" "admin"
+    createLeappSession "$env" "k8s" "PanoramaK8sEngineeringDefault" "panorama" "dev-writer"
+    createLeappSession "$env" "k8s" "PanoramaK8sEngineeringDefault" "panorama" "dev-reader"
+    createLeappSession "$env" "k8s" "PanoramaK8sDSAR" "panorama" "data-science-tester"
+
+    createLeappSession "$env" "DBs" "AWSAdministratorAccess" "rds" "admin"
+    createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-writer"
+    createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-reader"
 done
