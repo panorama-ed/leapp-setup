@@ -105,3 +105,7 @@ do
     createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-writer"
     createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-reader"
 done
+
+# session names from Leapp for production only
+createLeappSession "production" "DBs" "PanoramaDBsProdAccess" "panorama" "dev-writer"
+createLeappSession "production" "DBs" "PanoramaDBsProdAccess" "panorama" "dev-reader"
