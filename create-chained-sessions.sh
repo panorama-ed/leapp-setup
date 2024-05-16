@@ -64,6 +64,30 @@ function createLeappSession {
     fi
 }
 
+#
+# function to delete an existing chained leapp session
+# Args:
+# 1: name of environment ("playground", "staging", etc.)
+# 2: name of service ("k8s" or "DBs", reflecting naming of parent Leapp sessions)
+# 3: sso role name to use for the parent session
+# 4: name of the persona (e.g. admin, dev-writer, etc.) the new session is for
+function deleteLeappSession {
+  environment_name=$1
+  service_name=$2
+  iam_role_scope=$3
+  persona_name=$4
+  iam_role_name="${iam_role_scope}-${persona_name}"
+
+  session_name="${service_name}-${environment_name}-${persona_name}"
+  session_id=$(leappSessionId "$session_name" "$iam_role_name")
+
+  if [[ -n "${session_id}" ]]; then
+    green_echo "deleting session ${session_name}"
+
+    leapp session delete --sessionId "$session_id" > /dev/null 2> >(logStdErr)
+  fi
+}
+
 # @return the Leapp session ID of the session whose name is the first argument
 #   to this function, if one exists.
 function leappSessionId {
@@ -102,10 +126,21 @@ do
     createLeappSession "$env" "k8s" "PanoramaK8sDSAR" "panorama" "data-science-tester"
 
     createLeappSession "$env" "DBs" "AWSAdministratorAccess" "rds" "admin"
-    createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-writer"
-    createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-reader"
-done
 
-# session names from Leapp for production only
-createLeappSession "production" "DBs" "PanoramaDBsProdAccess" "panorama" "dev-writer"
-createLeappSession "production" "DBs" "PanoramaDBsProdAccess" "panorama" "dev-reader"
+    if [[ "$env" == "production" ]]; then
+      # This session may have been previously created with the
+      #  "PanoramaDBsEngineeringDefault" role.
+      # We delete any existing session to make sure we are creating one with the correct role.
+      deleteLeappSession "$env" "DBs" "panorama" "dev-writer"
+      createLeappSession "$env" "DBs" "PanoramaDBsProdAccess" "panorama" "dev-writer"
+
+      # This session may have been previously created with the
+      #  "PanoramaDBsEngineeringDefault" role.
+      # We delete any existing session to make sure we are creating one with the correct role.
+      deleteLeappSession "$env" "DBs" "panorama" "dev-reader"
+      createLeappSession "$env" "DBs" "PanoramaDBsProdAccess" "panorama" "dev-reader"
+    else
+      createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-writer"
+      createLeappSession "$env" "DBs" "PanoramaDBsEngineeringDefault" "panorama" "dev-reader"
+    fi
+done
